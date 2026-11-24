@@ -6,6 +6,8 @@ Nov 24, 2026 · Blessing Chiwara
 Between November 23 and November 24, 2026, a black-box penetration test was performed against the public facing web presence of Mediroza General Hospital (medirozahospital.com), focused on the Patient Portal application. The engagement identified three exploitable vulnerabilities and one informational observation, two of which are rated Critical.
 I bypassed Patient Portal authentication using SQL injection, gaining access to another patient's lab report listing without valid credentials. Separately, an unauthenticated legacy backup file was discovered on the web server containing a full export of the hospital's internal HR database, including staff full names, national ID numbers, phone numbers, email addresses, monthly salaries, and a complete shareholder register with equity holdings. Password-protected PDF lab reports retrieved from the portal were also found to use weak passwords that were recovered in minutes using dictionary-based cracking.
 Taken together, these findings represent a severe breach of patient confidentiality, staff personal data, and corporate financial information, and expose Mediroza General Hospital to regulatory, reputational and legal risk under applicable data protection obligations. Immediate remediation is recommended, prioritizing removal of the exposed backup file and the SQL injection vulnerability.
+![](Screenshot_2026-11-23_15_11_24.png)
+![](Screenshot_2026-11-23_15_11_36.png)
 
 **Scope and Methodology**
 Target: medirozahospital.com, the public corporate website, Patient Portal (/patient/login.php, /patient/portal.php), and associated static file paths. The assessment was conducted as an authorized external black-box engagement from a Kali Linux attack workstation.
@@ -27,8 +29,12 @@ Proof of exploitation:
 •	Username field: admin' --
 •	Password field: ' OR 1=1 --
 •	Result: the application authenticated the request and redirected to /patient/portal.php ("My lab reports"), exposing a listing of three patients' pathology report (S. Dlamini, P. Reddy, E. Thompson) with Lab Ref numbers, dates, and download links.
+![](Screenshot_2026-11-23_14_22_48.png)
+![](Screenshot_2026-11-23_14_23_06.png)
 
 A later retest of the same payload against the username field alone (without the password payload) returned "Incorrect password", suggesting the bypass depends on the exact payload combination and that input handling is inconsistent rather than fully remediated.
+![](Screenshot_2026-11-23_22_39_34.png)
+
 
 Finding 2: Sensitive Information Disclosure via Unauthenticated Legacy Backup File
 An old/unlinked path on the web server (https://medirozahospital.com/old/mediroza_db_backup_2019.sql) was directly retrievable with no authentication:
@@ -36,6 +42,9 @@ curl -s -A "Mozilla/5.0" -O https://medirozahospital.com/old/mediroza_db_backup_
 The 6.2 KB file is a plaintext MySQL dump labeled "Mediroza General Hospital, internal database backup" (database mediroza_hr), explicitly commented as containing confidential staff and shareholder records. It includes:
 •	staff table: 30 rows with full name, job title, department, email, phone number, national ID number, monthly salary in ZAR, and date joined, for roles spanning IT, clinical, finance, and executive staff (e.g. Medical Director, CFO, Consultant Cardiologist, HR Director).
 •	shareholders table: shareholder name, share percentage, shares held, and share class, full corporate ownership structure.
+![](Screenshot_2026-11-23_23_28_34.png)
+![](Screenshot_2026-11-23_15_12_20.png)
+
 
 This is the most severe finding of the engagement: no exploitation beyond a direct HTTP request was required to obtain PII, national identification numbers, compensation data, and shareholder equity records for the entire organization.
 Finding 3: Weak Passwords on Encrypted Patient Report PDFs
@@ -43,11 +52,28 @@ PDF lab reports downloaded from the Patient Portal (e.g. patient_report_1.pdf, p
 Proof of exploitation:
 •	A crackable password hash was extracted from each PDF using a hash-extraction tool (pdf2john/hashcat-compatible format).
 •	patient_report_1.pdf: cracked on the first attempt (1 of 100) against a built-in 100-password list, recovered password was 123456.
-•	patient_report_3.pdf: required a larger 959-word list and was cracked after 187 attempts (19% progress), a stronger but still dictionary-crackable password, that was later cracked by Calude using Hexstrike MCP.
-•	Both recovered passwords successfully unlocked the respective PDFs in a PDF reader, confirming full access to the pathology results inside.
+![](Screenshot_2026-11-23_15_02_29.png)
+![](Screenshot_2026-11-23_15_03_12.png)
+![](Screenshot_2026-11-23_15_02_58.png)
+• patient_report_2.pdf: cracked password on 2% of the dictionary attack against a built-in 100-password, recovered was password.
+![](Screenshot_2026-11-23_15_05_14.png)
+![](Screenshot_2026-11-23_15_05_32.png)
+![](Screenshot_2026-11-23_15_05_45.png)
+
+•	patient_report_3.pdf: required a larger 959-word list and was cracked after 187 attempts (19% progress),
+![](Screenshot_2026-11-23_15_18_17.png)
+![](Screenshot_2026-11-23_15_41_02.png)
+a stronger but still dictionary-crackable password, that was later cracked by Calude using Hexstrike MCP.
+![](Screenshot_2026-11-23_16_26_19.png)
+![](Screenshot_2026-11-23_16_26_09.png)
+![](Screenshot_2026-11-23_16_25_15.png)
+
+•	ALL recovered passwords successfully unlocked the respective PDFs in a PDF reader, confirming full access to the pathology results inside.
 
 Observation 4: Absence of a Web Application Firewall (Informational)
 A WAF fingerprinting scan against medirozahospital.com returned "No WAF detected by the generic detection" (7 requests sent). The server stack was identified as OpenResty 1.31.1.1 behind LiteSpeed, with some security relevant headers present (nosniff, SAMEORIGIN, a scoped Content-Security-Policy), but no WAF or virtual-patching layer to blunt injection attempts such as Finding 1.
+![](Screenshot_2026-11-23_22_46_40.png)
+
 
 **Risk Rating**
 | # | Finding | Rating | Justification |
